@@ -95,7 +95,7 @@ const COA_STRUCTURE: { income: COAGroup[]; expense: COAGroup[] } = {
   ]
 };
 
-const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbxD1xx4WP7azHjvsWBbWH05LhVz4-sD9QOvq8cs7hjNNoX9Qh3JVEXCjRSmPTrCxnJIJQ/exec';
+const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbyz2A_17RKu0FKhJ1MOmtiE7Yc11rpiSyNXWSpgmw4pgyDPvFXBwI3y3NRfM7LlTIxZUQ/exec';
 
 const LoginPage = ({ onLogin }: { onLogin: () => void }) => {
   const [username, setUsername] = useState('');
