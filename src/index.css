@@ -1,0 +1,230 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#EFEBE0] text-[#133838] font-sans antialiased;
+  }
+}
+
+@layer components {
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+@media print {
+  @page {
+    margin: 15mm;
+  }
+  
+  .print-portrait {
+    @page { size: A4 portrait; margin: 15mm; }
+  }
+  
+  .print-landscape {
+    @page { size: A4 landscape; margin: 15mm; }
+  }
+
+  /* Hide UI elements */
+  header, 
+  nav, 
+  .no-print, 
+  .organization-info-bar,
+  .last-sync-text,
+  .refresh-btn,
+  .logout-btn,
+  .sub-tabs-container,
+  .bg-stone-200\/50,
+  .p-1.rounded-xl.w-fit {
+    display: none !important;
+  }
+
+  /* Reset layout for print */
+  body, #root, main {
+    background: white !important;
+    color: black !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    font-family: 'Inter', sans-serif !important;
+  }
+
+  .p-8 {
+    padding: 0 !important;
+  }
+
+  .max-w-7xl {
+    max-width: none !important;
+    width: 100% !important;
+  }
+
+  /* Minimalist styling */
+  .bg-white, .bg-stone-50, .bg-stone-50\/50, .bg-stone-100, .bg-stone-200\/50 {
+    background: transparent !important;
+  }
+
+  .text-\[\#133838\], .text-stone-900, .text-stone-600, .text-stone-500, .text-stone-400 {
+    color: black !important;
+  }
+
+  .shadow-sm, .shadow-lg, .shadow-2xl, .shadow-md {
+    box-shadow: none !important;
+  }
+
+  .border, .border-stone-200, .border-stone-100, .border-b {
+    border: 0.5pt solid #000 !important;
+  }
+
+  .rounded-xl, .rounded-2xl, .rounded-\[2rem\], .rounded-lg, .rounded-t-\[2rem\] {
+    border-radius: 0 !important;
+  }
+
+  /* Table adjustments - Minimalist */
+  table {
+    width: 100% !important;
+    min-width: 0 !important; /* Remove min-width for print */
+    table-layout: fixed !important;
+    font-size: 6.5pt !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto;
+    border: 1px solid black !important;
+  }
+
+  /* Specific column widths for yearly report to ensure fit */
+  .print-landscape table th:nth-child(1),
+  .print-landscape table td:nth-child(1) {
+    width: 2% !important;
+    min-width: 0 !important;
+  }
+  .print-landscape table th:nth-child(2),
+  .print-landscape table td:nth-child(2) {
+    width: 10% !important;
+    min-width: 0 !important;
+    text-align: left !important;
+    padding-left: 4px !important;
+    padding-right: 12px !important;
+  }
+  .print-landscape table th:nth-child(n+3):nth-child(-n+14),
+  .print-landscape table td:nth-child(n+3):nth-child(-n+14) {
+    width: 6.5% !important;
+    min-width: 0 !important;
+    white-space: nowrap !important;
+    text-align: right !important;
+  }
+  .print-landscape table th:last-child,
+  .print-landscape table td:last-child {
+    width: 10% !important;
+    min-width: 0 !important;
+    white-space: nowrap !important;
+    text-align: right !important;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+    border-bottom: 1px solid black !important;
+  }
+
+  th, td {
+    padding: 3px 4px !important;
+    border: 1px solid black !important;
+    word-wrap: normal !important;
+    overflow: hidden !important;
+    color: black !important;
+    vertical-align: top !important;
+    /* Fix for "white boxes" and sticky issues */
+    position: static !important;
+    background: transparent !important;
+  }
+
+  /* Uraian column specific wrapping */
+  th:nth-child(2), td:nth-child(2) {
+    white-space: normal !important;
+    word-wrap: break-word !important;
+  }
+
+  th {
+    background-color: #f0f0f0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    font-weight: bold !important;
+    text-transform: uppercase !important;
+  }
+
+  /* Ensure all columns fit */
+  .w-full {
+    width: 100% !important;
+  }
+
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  /* Specific adjustments for LAK Tahunan (Landscape) */
+  .print-landscape table {
+    font-size: 6pt !important;
+  }
+
+  /* Specific adjustments for LAK Detail (Portrait) */
+  .print-portrait table {
+    font-size: 7pt !important;
+  }
+
+  /* Header adjustments for print */
+  h2, h3 {
+    color: black !important;
+    margin-bottom: 10px !important;
+    text-align: center !important;
+    width: 100% !important;
+  }
+
+  /* Arus Kas specific print tweaks */
+  .space-y-6 > div {
+    margin-bottom: 15px !important;
+  }
+
+  .bg-\[\#133838\], .bg-\[\#D36125\], .bg-stone-900, .bg-\[\#133838\]\/10, .bg-\[\#133838\]\/5 {
+    background-color: #f3f4f6 !important;
+    color: black !important;
+    border: 1px solid black !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .text-emerald-600, .text-red-600 {
+    color: black !important;
+    font-weight: bold !important;
+  }
+
+  .no-screen {
+    display: block !important;
+  }
+
+  .print-footer-text {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 8pt;
+    font-style: italic;
+    color: #666 !important;
+    background: white !important;
+    padding: 5px 0;
+    z-index: 9999;
+  }
+}
+
+.no-screen {
+  display: none;
+}

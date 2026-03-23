@@ -1,0 +1,82 @@
+/**
+ * Google Apps Script for FinanceApp
+ * 
+ * Instructions:
+ * 1. Open your Google Spreadsheet.
+ * 2. Go to Extensions > Apps Script.
+ * 3. Delete any existing code and paste this code.
+ * 4. Replace 'YOUR_SPREADSHEET_ID' with your actual spreadsheet ID.
+ * 5. Click 'Deploy' > 'New Deployment'.
+ * 6. Select type 'Web App'.
+ * 7. Set 'Execute as' to 'Me'.
+ * 8. Set 'Who has access' to 'Anyone'.
+ * 9. Click 'Deploy' and copy the Web App URL.
+ * 10. Paste the URL into your .env file as APPS_SCRIPT_URL.
+ */
+
+function doGet() {
+  // Ganti dengan ID Spreadsheet Anda
+  const spreadsheetId = "1pyTFglnajFZwy2oGxLxvkZ4kMcZ8EETrqNOyfDNXdL8";
+  
+  try {
+    const ss = SpreadsheetApp.openById(spreadsheetId);
+    const sheets = ss.getSheets();
+    let allData = [];
+    
+    sheets.forEach(sheet => {
+      const sheetName = sheet.getName().trim().toUpperCase();
+      const data = sheet.getDataRange().getValues();
+      if (data.length < 2) return;
+      
+      const headers = data[0].map(h => String(h).trim().toUpperCase());
+      const rows = data.slice(1);
+      
+      const sheetData = rows.map(row => {
+        const obj = {};
+        headers.forEach((header, i) => {
+          const val = row[i];
+          
+          // Map Indonesian headers to English keys expected by the app
+          if (header === "TGL" || header === "DATE" || header === "TANGGAL") {
+            obj["date"] = val;
+          } else if (header === "URAIAN" || header === "DESCRIPTION" || header === "KETERANGAN") {
+            obj["description"] = val;
+          } else if (header === "JUMLAH" || header === "AMOUNT" || header === "NOMINAL") {
+            obj["amount"] = val;
+          } else if (header === "KAS" || header === "BANK" || header === "AKUN") {
+            obj["bank"] = val;
+          } else if (header === "POS" || header === "CATEGORY" || header === "KODE") {
+            obj["category"] = val;
+          } else if (header === "TRANSAKSI" || header === "TYPE" || header === "JENIS") {
+            const typeStr = String(val).trim().toUpperCase();
+            if (typeStr === "MASUK" || typeStr === "INCOME" || typeStr === "DEBIT") {
+              obj["type"] = "Income";
+            } else if (typeStr === "PENGELUARAN" || typeStr === "EXPENSE" || typeStr === "KREDIT") {
+              obj["type"] = "Expense";
+            } else {
+              obj["type"] = val;
+            }
+          } else {
+            obj[header] = val;
+          }
+        });
+
+        // Fallback for bank if column is missing or empty
+        if (!obj["bank"]) {
+          obj["bank"] = sheet.getName();
+        }
+
+        return obj;
+      });
+      
+      allData = allData.concat(sheetData);
+    });
+
+    return ContentService.createTextOutput(JSON.stringify(allData))
+      .setMimeType(ContentService.MimeType.JSON);
+      
+  } catch (e) {
+    return ContentService.createTextOutput(JSON.stringify({ error: e.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
