@@ -95,7 +95,7 @@ const COA_STRUCTURE: { income: COAGroup[]; expense: COAGroup[] } = {
   ]
 };
 
-const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbyz2A_17RKu0FKhJ1MOmtiE7Yc11rpiSyNXWSpgmw4pgyDPvFXBwI3y3NRfM7LlTIxZUQ/exec';
+const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbx_PeNPW4Wu8VpIBW2teDJhfiFUXGuNN0fLL8g7j419hZSbrlOMAPyeFBo5pwfrt1DNTw/exec';
 
 const LoginPage = ({ onLogin }: { onLogin: () => void }) => {
   const [username, setUsername] = useState('');
@@ -306,6 +306,7 @@ export default function App() {
   const [selectedMonth, setSelectedMonth] = useState<number | 'all'>('all');
   const [selectedDetailMonth, setSelectedDetailMonth] = useState<number>(11);
   const [arusKasSubTab, setArusKasSubTab] = useState<'bulanan' | 'tahunan'>('bulanan');
+  const selectedYear = 2025;
 
   const handleExportPDF = useCallback(() => {
     const table = document.querySelector('table');
@@ -354,7 +355,7 @@ export default function App() {
     doc.setFont('helvetica', 'normal');
     let subtitle = '';
     if (activeTab === 'arus-kas') {
-      subtitle = arusKasSubTab === 'bulanan' ? `BULAN : ${monthNames[selectedArusKasMonth].toUpperCase()}` : 'TAHUN 2025';
+      subtitle = arusKasSubTab === 'bulanan' ? `BULAN : ${monthNames[selectedArusKasMonth].toUpperCase()}` : `TAHUN ${selectedYear}`;
     } else if (activeTab === 'aktivitas-keuangan') {
       if (aktivitasSubTab === 'bulanan') {
         subtitle = `BULAN : ${monthNames[selectedMonth === 'all' ? 0 : selectedMonth].toUpperCase()}`;
@@ -433,7 +434,7 @@ export default function App() {
     });
 
     doc.save(`Laporan_${activeTab}_${new Date().toISOString().split('T')[0]}.pdf`);
-  }, [activeTab, aktivitasSubTab, selectedMonth, selectedDetailMonth, selectedArusKasMonth, arusKasSubTab]);
+  }, [activeTab, aktivitasSubTab, selectedMonth, selectedDetailMonth, selectedArusKasMonth, arusKasSubTab, selectedYear]);
 
   const banks = useMemo(() => {
     let filtered = transactions.filter(t => t.bank !== 'DEPO BJT');
@@ -492,11 +493,11 @@ export default function App() {
       } else {
         const currentMonthTxs = txsWithBalance.filter(t => {
           const td = new Date(t.date);
-          return td.getMonth() === month && td.getFullYear() === 2025;
+          return td.getMonth() === month && td.getFullYear() === selectedYear;
         });
         const prevMonthTxs = txsWithBalance.filter(t => {
           const td = new Date(t.date);
-          return td.getFullYear() < 2025 || (td.getFullYear() === 2025 && td.getMonth() < month);
+          return td.getFullYear() < selectedYear || (td.getFullYear() === selectedYear && td.getMonth() < month);
         });
         const startingBalance = prevMonthTxs.length > 0 ? prevMonthTxs[prevMonthTxs.length - 1].runningBalance : 0;
 
@@ -505,7 +506,7 @@ export default function App() {
         } else {
           const prevMonthName = monthNames[month - 1];
           const virtualSaldoAwal: TableTransaction = {
-            date: new Date(2025, month, 1).toISOString(),
+            date: new Date(selectedYear, month, 1).toISOString(),
             description: `SALDO AWAL (PINDAHAN SALDO ${prevMonthName})`,
             category: '400 - SALDO AWAL',
             type: 'Income' as const,
@@ -528,7 +529,7 @@ export default function App() {
       if (!aIsSA && bIsSA) return 1;
       return new Date(a.date).getTime() - new Date(b.date).getTime();
     });
-  }, [isSaldoAwal]);
+  }, [isSaldoAwal, selectedYear]);
 
   const transactionsForTable = useMemo(() => {
     const bankTxs = filteredTransactions.filter(t => t.bank !== 'KAS' && t.bank !== 'DEPO BJT');
@@ -593,7 +594,7 @@ export default function App() {
                 
                 const d = new Date(t.date);
                 const monthMatch = d.getMonth() + 1 === m;
-                const yearMatch = d.getFullYear() === 2025;
+                const yearMatch = d.getFullYear() === selectedYear;
                 
                 return t.type === type && isMatch && monthMatch && yearMatch;
               })
@@ -639,7 +640,6 @@ export default function App() {
     // Saldo Awal calculation - MUST use filteredTransactions to be consistent with surplus
     const monthlySAInjections = months.map((_, i) => {
       const monthIndex = i;
-      const selectedYear = 2025;
       return filteredTransactions
         .filter(t => {
           const d = new Date(t.date);
@@ -650,7 +650,6 @@ export default function App() {
 
     const saldoAwalMonthly = months.map((_, i) => {
       const monthIndex = i;
-      const selectedYear = 2025;
       const prevBalance = filteredTransactions
         .filter(t => {
           const d = new Date(t.date);
@@ -670,7 +669,6 @@ export default function App() {
     // even if some transactions are not perfectly categorized in the COA
     const kasSetaraKasMonthly = months.map((_, i) => {
       const monthIndex = i;
-      const selectedYear = 2025;
       return filteredTransactions
         .filter(t => {
           const d = new Date(t.date);
@@ -698,7 +696,7 @@ export default function App() {
       kasSetaraKasMonthly,
       kasSetaraKasTotal
     };
-  }, [filteredTransactions, isSaldoAwal]);
+  }, [filteredTransactions, isSaldoAwal, selectedYear]);
 
   const arusKasData = useMemo(() => {
     const normalize = (str: string) => str.toLowerCase().trim()
@@ -746,7 +744,6 @@ export default function App() {
       // Calculate Saldo Awal and Saldo Akhir directly to ensure consistency with other reports
       let saldoAwal = 0;
       let saldoAkhir = 0;
-      const selectedYear = 2025;
 
       if (monthIndex !== null) {
         // Monthly view
@@ -821,13 +818,18 @@ export default function App() {
 
     const monthCashTxs = allCashTxs.filter(t => {
       const d = new Date(t.date);
-      return d.getMonth() === selectedArusKasMonth && d.getFullYear() === 2025;
+      return d.getMonth() === selectedArusKasMonth && d.getFullYear() === selectedYear;
     });
     const bulanan = calculateForTransactions(monthCashTxs, selectedArusKasMonth);
-    const tahunan = calculateForTransactions(allCashTxs, null);
+    
+    const yearCashTxs = allCashTxs.filter(t => {
+      const d = new Date(t.date);
+      return d.getFullYear() === selectedYear;
+    });
+    const tahunan = calculateForTransactions(yearCashTxs, null);
 
     return { bulanan, tahunan };
-  }, [transactions, selectedArusKasMonth, isSaldoAwal, isTransfer]);
+  }, [transactions, selectedArusKasMonth, isSaldoAwal, isTransfer, selectedYear]);
 
   const detailReportData = useMemo(() => {
     const targetBanks = ['MANDIRI', 'BANK JATENG', 'BJS', 'BSI', 'KAS', 'DEPO BJT'];
@@ -876,7 +878,7 @@ export default function App() {
                 
                 const d = new Date(t.date);
                 const monthMatch = d.getMonth() === selectedDetailMonth;
-                const yearMatch = d.getFullYear() === 2025;
+                const yearMatch = d.getFullYear() === selectedYear;
                 const bankMatch = t.bank.trim().toUpperCase() === bank;
                 return t.type === type && isMatch && monthMatch && yearMatch && bankMatch;
               })
@@ -920,7 +922,6 @@ export default function App() {
     const surplusGrandTotal = incomeGrandTotal - expenseGrandTotal;
 
     const saldoAwalBank = targetBanks.map(bank => {
-      const selectedYear = 2025;
       const prevBalance = transactions
         .filter(t => {
           const d = new Date(t.date);
@@ -946,7 +947,6 @@ export default function App() {
     const saldoAwalTotal = saldoAwalBank.reduce((sum, val) => sum + val, 0);
 
     const kasSetaraKasBank = targetBanks.map(bank => {
-      const selectedYear = 2025;
       return transactions
         .filter(t => {
           const d = new Date(t.date);
@@ -974,14 +974,14 @@ export default function App() {
       kasSetaraKasTotal,
       targetBanks
     };
-  }, [transactions, selectedDetailMonth, isSaldoAwal]);
+  }, [transactions, selectedDetailMonth, isSaldoAwal, selectedYear]);
 
 
   const getBalance = useCallback((bankName: string) => {
     return transactions
-      .filter(t => t.bank.toUpperCase() === bankName.toUpperCase() && new Date(t.date).getFullYear() <= 2025)
+      .filter(t => t.bank.toUpperCase() === bankName.toUpperCase() && new Date(t.date).getFullYear() <= selectedYear)
       .reduce((sum, t) => sum + (t.type === 'Income' ? t.amount : -t.amount), 0);
-  }, [transactions]);
+  }, [transactions, selectedYear]);
 
   const kasBalance = useMemo(() => getBalance('KAS'), [getBalance]);
   const mandiriBalance = useMemo(() => getBalance('MANDIRI'), [getBalance]);
@@ -1218,10 +1218,10 @@ export default function App() {
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
                 <h2 className="text-3xl font-black text-[#133838] uppercase tracking-tighter">
                   {activeTab === 'dashboard' ? 'Dashboard' : 
-                   activeTab === 'aktivitas-keuangan' ? 'LAPORAN AKTIVITAS KEUANGAN 2025' : 
+                   activeTab === 'aktivitas-keuangan' ? `LAPORAN AKTIVITAS KEUANGAN ${selectedYear}` : 
                    activeTab === 'transaksi-bank' ? 'Transaksi Bank' : 
                    activeTab === 'transaksi-kas' ? 'Transaksi Kas' : 
-                   activeTab === 'arus-kas' ? 'LAPORAN ARUS KAS 2025' :
+                   activeTab === 'arus-kas' ? `LAPORAN ARUS KAS ${selectedYear}` :
                    'Transaksi Deposito'}
                 </h2>
 
@@ -1376,7 +1376,7 @@ export default function App() {
                       <h3 className="text-xl font-black text-[#133838] uppercase print:hidden">Laporan Aktivitas Keuangan Tahunan</h3>
                       <div className="no-screen flex flex-col items-center mb-6 border-b-2 border-black pb-4 w-full">
                         <h3 className="text-xl font-black text-[#133838] uppercase mb-2">Laporan Aktivitas Keuangan Tahunan</h3>
-                        <p className="text-lg font-bold text-stone-600 uppercase tracking-widest text-center">Tahun 2025</p>
+                        <p className="text-lg font-bold text-stone-600 uppercase tracking-widest text-center">Tahun {selectedYear}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-4 no-print">
@@ -2272,7 +2272,7 @@ export default function App() {
         <footer className="bg-white border-t border-stone-200 py-6 px-8 no-print">
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest italic">
-              CFM 2025 - PERSI JAWA TENGAH
+              CFM {selectedYear} - PERSI JAWA TENGAH
             </p>
             <div className="flex gap-2">
               {Array(8).fill(0).map((_, i) => (
