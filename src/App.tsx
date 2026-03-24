@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   Wallet,
   AlertCircle,
@@ -194,6 +195,7 @@ export default function App() {
   const [aktivitasSubTab, setAktivitasSubTab] = useState<'tahunan' | 'detail'>('tahunan');
   const [selectedArusKasMonth, setSelectedArusKasMonth] = useState<number>(11);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
@@ -230,12 +232,25 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (isLoggedIn) {
+      fetchData();
+    }
+  }, [isLoggedIn]);
 
   const fetchData = async () => {
     setLoading(true);
+    setLoadingProgress(0);
     setError(null);
+    
+    // Progress simulation
+    const progressInterval = setInterval(() => {
+      setLoadingProgress(prev => {
+        if (prev >= 90) return prev;
+        const increment = Math.floor(Math.random() * 10) + 5;
+        return Math.min(prev + increment, 90);
+      });
+    }, 200);
+
     try {
       const proxyUrl = `/api/proxy/apps-script?url=${encodeURIComponent(APPS_SCRIPT_URL)}`;
       const response = await fetch(proxyUrl);
@@ -293,11 +308,18 @@ export default function App() {
 
       setTransactions(formattedData);
       setLastUpdated(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+      
+      // Complete progress
+      setLoadingProgress(100);
+      setTimeout(() => {
+        setLoading(false);
+      }, 500);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Gagal mengambil data');
       console.error('Fetch error:', err);
-    } finally {
       setLoading(false);
+    } finally {
+      clearInterval(progressInterval);
     }
   };
 
@@ -1198,18 +1220,45 @@ export default function App() {
                 </div>
               </div>
 
-              {(activeTab === 'aktivitas-keuangan' || activeTab === 'arus-kas') && (
-                <div className="flex items-center gap-1.5 no-print">
-                  <button 
-                    type="button"
-                    onClick={handleExportPDF}
-                    className="p-2 bg-stone-100 text-stone-600 rounded-lg hover:bg-stone-200 transition-all border border-stone-200 cursor-pointer relative z-10"
-                    title="Export PDF"
-                  >
-                    <FileDown className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
+              <div className="flex items-center gap-4">
+                <AnimatePresence>
+                  {loading && (
+                    <motion.div 
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 20 }}
+                      className="flex items-center gap-3 bg-[#D36125] px-3 py-1.5 rounded-xl shadow-lg border border-[#D36125]/20 no-print"
+                    >
+                      <div className="flex flex-col items-end">
+                        <span className="text-[8px] font-black text-white uppercase tracking-[0.15em] leading-none mb-1.5">
+                          Loading {loadingProgress}%
+                        </span>
+                        <div className="w-20 h-1 bg-white/30 rounded-full overflow-hidden">
+                          <motion.div 
+                            className="h-full bg-white"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${loadingProgress}%` }}
+                            transition={{ duration: 0.3 }}
+                          />
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {(activeTab === 'aktivitas-keuangan' || activeTab === 'arus-kas') && (
+                  <div className="flex items-center gap-1.5 no-print">
+                    <button 
+                      type="button"
+                      onClick={handleExportPDF}
+                      className="p-2 bg-stone-100 text-stone-600 rounded-lg hover:bg-stone-200 transition-all border border-stone-200 cursor-pointer relative z-10"
+                      title="Export PDF"
+                    >
+                      <FileDown className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
