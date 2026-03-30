@@ -13,7 +13,10 @@ import {
   Lock,
   LogOut,
   FileDown,
-  ChevronUp
+  ChevronUp,
+  Search,
+  X,
+  ArrowRight
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -198,6 +201,11 @@ export default function App() {
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [arusKasDetail, setArusKasDetail] = useState<{
+    title: string;
+    transactions: Transaction[];
+  } | null>(null);
+  const [highlightedTx, setHighlightedTx] = useState<Transaction | null>(null);
   const mainRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -329,6 +337,82 @@ export default function App() {
   const [selectedDetailMonth, setSelectedDetailMonth] = useState<number>(11);
   const [arusKasSubTab, setArusKasSubTab] = useState<'bulanan' | 'tahunan'>('bulanan');
   const selectedYear = 2025;
+
+  const handleNavigateToTransaksi = useCallback((targetTx?: Transaction) => {
+    if (!arusKasDetail || (arusKasDetail.transactions.length === 0 && !targetTx)) return;
+
+    const txs = targetTx ? [targetTx] : arusKasDetail.transactions;
+    const firstTx = txs[0];
+    const txMonth = new Date(firstTx.date).getMonth();
+    
+    // Set filters
+    if (targetTx) {
+      setSelectedMonth(txMonth);
+    } else {
+      // Check if all transactions are in the same month
+      const allSameMonth = arusKasDetail.transactions.every(t => new Date(t.date).getMonth() === txMonth);
+      if (arusKasSubTab === 'bulanan' && allSameMonth) {
+        setSelectedMonth(txMonth);
+      } else {
+        setSelectedMonth('all');
+      }
+    }
+
+    // Determine tab based on bank
+    const isAllKas = txs.every(t => t.bank === 'KAS');
+    const isAllDeposito = txs.every(t => t.bank === 'DEPO BJT');
+
+    if (isAllKas) {
+      setActiveTab('transaksi-kas');
+    } else if (isAllDeposito) {
+      setActiveTab('transaksi-deposito');
+    } else {
+      setActiveTab('transaksi-bank');
+      // If they are mostly from one bank, we could set selectedBank, 
+      // but 'All' is safer if mixed.
+      const firstBank = firstTx.bank;
+      const allSameBank = txs.every(t => t.bank === firstBank);
+      if (allSameBank && firstBank !== 'KAS' && firstBank !== 'DEPO BJT') {
+        setSelectedBank(firstBank);
+      } else {
+        setSelectedBank('All');
+      }
+    }
+
+    // Close modal
+    setArusKasDetail(null);
+    
+    if (targetTx) {
+      setHighlightedTx(targetTx);
+      // Clear highlight after 10 seconds
+      setTimeout(() => setHighlightedTx(null), 10000);
+    } else {
+      // Only scroll to top if we are NOT targeting a specific transaction
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [arusKasDetail, arusKasSubTab]);
+
+  // Effect to scroll highlighted transaction into view
+  useEffect(() => {
+    if (highlightedTx) {
+      // Use a small timeout to ensure the table has rendered with the new filters/tab
+      const timer = setTimeout(() => {
+        const highlightedRow = document.querySelector('[data-highlighted="true"]');
+        if (highlightedRow) {
+          highlightedRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightedTx, activeTab, selectedMonth, selectedBank]);
+
+  const isHighlighted = (t: Transaction) => {
+    if (!highlightedTx) return false;
+    return t.date === highlightedTx.date && 
+           t.description === highlightedTx.description && 
+           t.amount === highlightedTx.amount && 
+           t.bank === highlightedTx.bank;
+  };
 
   const handleExportPDF = useCallback(() => {
     const table = document.querySelector('table');
@@ -475,8 +559,13 @@ export default function App() {
   }, [transactions, selectedBank]);
 
   const isTransfer = useCallback((t: Transaction) => {
-    return t.category.toLowerCase().includes('pindah buku') || 
-           t.description.toLowerCase().includes('pindah buku');
+    const cat = t.category.toLowerCase();
+    const desc = t.description.toLowerCase();
+    return cat.includes('pindah buku') || 
+           desc.includes('pindah buku') ||
+           cat.includes('deposito') ||
+           desc.includes('deposito') ||
+           t.bank === 'DEPO BJT';
   }, []);
 
   const isSaldoAwal = useCallback((t: Transaction) => {
@@ -759,10 +848,6 @@ export default function App() {
         .filter(t => t.type === 'Income' && (normalize(t.category).includes('bunga') || normalize(t.description).includes('bunga')))
         .reduce((sum, t) => sum + t.amount, 0);
 
-      const investingIncome = interestIncome;
-      const investingExpense = 0; 
-      const netInvesting = investingIncome - investingExpense;
-
       // Calculate Saldo Awal and Saldo Akhir directly to ensure consistency with other reports
       let saldoAwal = 0;
       let saldoAkhir = 0;
@@ -805,6 +890,9 @@ export default function App() {
       }
 
       const netIncrease = saldoAkhir - saldoAwal;
+      const investingIncome = interestIncome;
+      const investingExpense = 0;
+      const netInvesting = investingIncome - investingExpense;
       const netOperating = netIncrease - netInvesting;
 
       // Receipts Lain and Payments Lain act as balancers to ensure math consistency
@@ -852,6 +940,61 @@ export default function App() {
 
     return { bulanan, tahunan };
   }, [transactions, selectedArusKasMonth, isSaldoAwal, isTransfer, selectedYear]);
+
+  const formatArusKasValue = useCallback((val: number) => {
+    const rounded = Math.round(val);
+    return rounded === 0 ? 0 : rounded;
+  }, []);
+
+  const getArusKasTransactions = useCallback((category: string, isMonthly: boolean) => {
+    const normalize = (str: string) => str.toLowerCase().trim()
+      .replace(/^[\d.]+\s*/, '')
+      .replace(/lain-lain/g, 'lain')
+      .trim();
+
+    const txs = isMonthly 
+      ? transactions.filter(t => {
+          const d = new Date(t.date);
+          return d.getMonth() === selectedArusKasMonth && d.getFullYear() === selectedYear;
+        })
+      : transactions.filter(t => {
+          const d = new Date(t.date);
+          return d.getFullYear() === selectedYear;
+        });
+
+    switch (category) {
+      case 'receiptsRutin':
+        return txs.filter(t => t.type === 'Income' && !isTransfer(t) && !isSaldoAwal(t) && COA_STRUCTURE.income[0].items.some(item => normalize(item) === normalize(t.category)));
+      case 'receiptsProgram':
+        return txs.filter(t => t.type === 'Income' && !isTransfer(t) && !isSaldoAwal(t) && COA_STRUCTURE.income[1].items.some(item => normalize(item) === normalize(t.category)));
+      case 'receiptsLain':
+        return txs.filter(t => t.type === 'Income' && !isTransfer(t) && !isSaldoAwal(t) && (
+          COA_STRUCTURE.income[2].items.some(item => normalize(item) === normalize(t.category)) &&
+          !normalize(t.category).includes('bunga') &&
+          !normalize(t.description).includes('bunga')
+        ));
+      case 'paymentsRutin':
+        return txs.filter(t => t.type === 'Expense' && !isTransfer(t) && COA_STRUCTURE.expense[0].items.some(item => normalize(item) === normalize(t.category)));
+      case 'paymentsProgram':
+        return txs.filter(t => t.type === 'Expense' && !isTransfer(t) && (
+          COA_STRUCTURE.expense[1].items.some(item => normalize(item) === normalize(t.category)) ||
+          COA_STRUCTURE.expense[3].items.some(item => normalize(item) === normalize(t.category))
+        ));
+      case 'paymentsRapat':
+        return txs.filter(t => t.type === 'Expense' && !isTransfer(t) && COA_STRUCTURE.expense[2].items.some(item => normalize(item) === normalize(t.category)));
+      case 'paymentsLain':
+        return txs.filter(t => t.type === 'Expense' && !isTransfer(t) && 
+          !COA_STRUCTURE.expense[0].items.some(item => normalize(item) === normalize(t.category)) &&
+          !COA_STRUCTURE.expense[1].items.some(item => normalize(item) === normalize(t.category)) &&
+          !COA_STRUCTURE.expense[2].items.some(item => normalize(item) === normalize(t.category)) &&
+          !COA_STRUCTURE.expense[3].items.some(item => normalize(item) === normalize(t.category))
+        );
+      case 'interestIncome':
+        return txs.filter(t => t.type === 'Income' && (normalize(t.category).includes('bunga') || normalize(t.description).includes('bunga')));
+      default:
+        return [];
+    }
+  }, [transactions, selectedArusKasMonth, selectedYear, isTransfer, isSaldoAwal]);
 
   const detailReportData = useMemo(() => {
     const targetBanks = ['MANDIRI', 'BANK JATENG', 'BJS', 'BSI', 'KAS', 'DEPO BJT'];
@@ -1687,19 +1830,61 @@ export default function App() {
                               <tr>
                                 <td className="border border-stone-200 p-3 pl-8 text-stone-600 print:border-black">Penerimaan Rutin (Iuran/Pendaftaran)</td>
                                 <td className="border border-stone-200 p-3 text-right font-bold text-emerald-600 print:border-black">
-                                  {Math.round(currentArusKas.receiptsRutin).toLocaleString('id-ID')}
+                                  <div className="flex items-center justify-end">
+                                    <span className="tabular-nums">{formatArusKasValue(currentArusKas.receiptsRutin).toLocaleString('id-ID')}</span>
+                                    <div className="w-8 flex justify-center no-print">
+                                      <button 
+                                        onClick={() => setArusKasDetail({
+                                          title: 'Penerimaan Rutin (Iuran/Pendaftaran)',
+                                          transactions: getArusKasTransactions('receiptsRutin', arusKasSubTab === 'bulanan')
+                                        })}
+                                        className="p-1 hover:bg-stone-100 rounded transition-colors cursor-pointer"
+                                        title="See Detail"
+                                      >
+                                        <Search className="w-3.5 h-3.5 text-stone-400 hover:text-[#D36125]" />
+                                      </button>
+                                    </div>
+                                  </div>
                                 </td>
                               </tr>
                               <tr>
                                 <td className="border border-stone-200 p-3 pl-8 text-stone-600 print:border-black">Penerimaan Program (Seminar/Workshop)</td>
                                 <td className="border border-stone-200 p-3 text-right font-bold text-emerald-600 print:border-black">
-                                  {Math.round(currentArusKas.receiptsProgram).toLocaleString('id-ID')}
+                                  <div className="flex items-center justify-end">
+                                    <span className="tabular-nums">{formatArusKasValue(currentArusKas.receiptsProgram).toLocaleString('id-ID')}</span>
+                                    <div className="w-8 flex justify-center no-print">
+                                      <button 
+                                        onClick={() => setArusKasDetail({
+                                          title: 'Penerimaan Program (Seminar/Workshop)',
+                                          transactions: getArusKasTransactions('receiptsProgram', arusKasSubTab === 'bulanan')
+                                        })}
+                                        className="p-1 hover:bg-stone-100 rounded transition-colors cursor-pointer"
+                                        title="See Detail"
+                                      >
+                                        <Search className="w-3.5 h-3.5 text-stone-400 hover:text-[#D36125]" />
+                                      </button>
+                                    </div>
+                                  </div>
                                 </td>
                               </tr>
                               <tr>
                                 <td className="border border-stone-200 p-3 pl-8 text-stone-600 print:border-black">Penerimaan Lain-lain</td>
                                 <td className="border border-stone-200 p-3 text-right font-bold text-emerald-600 print:border-black">
-                                  {Math.round(currentArusKas.receiptsLain).toLocaleString('id-ID')}
+                                  <div className="flex items-center justify-end">
+                                    <span className="tabular-nums">{formatArusKasValue(currentArusKas.receiptsLain).toLocaleString('id-ID')}</span>
+                                    <div className="w-8 flex justify-center no-print">
+                                      <button 
+                                        onClick={() => setArusKasDetail({
+                                          title: 'Penerimaan Lain-lain',
+                                          transactions: getArusKasTransactions('receiptsLain', arusKasSubTab === 'bulanan')
+                                        })}
+                                        className="p-1 hover:bg-stone-100 rounded transition-colors cursor-pointer"
+                                        title="See Detail"
+                                      >
+                                        <Search className="w-3.5 h-3.5 text-stone-400 hover:text-[#D36125]" />
+                                      </button>
+                                    </div>
+                                  </div>
                                 </td>
                               </tr>
                               <tr className="italic text-stone-400 font-bold">
@@ -1708,25 +1893,81 @@ export default function App() {
                               <tr>
                                 <td className="border border-stone-200 p-3 pl-8 text-stone-600 print:border-black">Pengeluaran Rutin (Gaji/Kantor)</td>
                                 <td className="border border-stone-200 p-3 text-right font-bold text-red-600 print:border-black">
-                                  ({Math.round(currentArusKas.paymentsRutin).toLocaleString('id-ID')})
+                                  <div className="flex items-center justify-end">
+                                    <span className="tabular-nums">({formatArusKasValue(currentArusKas.paymentsRutin).toLocaleString('id-ID')})</span>
+                                    <div className="w-8 flex justify-center no-print">
+                                      <button 
+                                        onClick={() => setArusKasDetail({
+                                          title: 'Pengeluaran Rutin (Gaji/Kantor)',
+                                          transactions: getArusKasTransactions('paymentsRutin', arusKasSubTab === 'bulanan')
+                                        })}
+                                        className="p-1 hover:bg-stone-100 rounded transition-colors cursor-pointer"
+                                        title="See Detail"
+                                      >
+                                        <Search className="w-3.5 h-3.5 text-stone-400 hover:text-[#D36125]" />
+                                      </button>
+                                    </div>
+                                  </div>
                                 </td>
                               </tr>
                               <tr>
                                 <td className="border border-stone-200 p-3 pl-8 text-stone-600 print:border-black">Pengeluaran Program (Pendampingan/Diklat)</td>
                                 <td className="border border-stone-200 p-3 text-right font-bold text-red-600 print:border-black">
-                                  ({Math.round(currentArusKas.paymentsProgram).toLocaleString('id-ID')})
+                                  <div className="flex items-center justify-end">
+                                    <span className="tabular-nums">({formatArusKasValue(currentArusKas.paymentsProgram).toLocaleString('id-ID')})</span>
+                                    <div className="w-8 flex justify-center no-print">
+                                      <button 
+                                        onClick={() => setArusKasDetail({
+                                          title: 'Pengeluaran Program (Pendampingan/Diklat)',
+                                          transactions: getArusKasTransactions('paymentsProgram', arusKasSubTab === 'bulanan')
+                                        })}
+                                        className="p-1 hover:bg-stone-100 rounded transition-colors cursor-pointer"
+                                        title="See Detail"
+                                      >
+                                        <Search className="w-3.5 h-3.5 text-stone-400 hover:text-[#D36125]" />
+                                      </button>
+                                    </div>
+                                  </div>
                                 </td>
                               </tr>
                               <tr>
                                 <td className="border border-stone-200 p-3 pl-8 text-stone-600 print:border-black">Pengeluaran Rapat</td>
                                 <td className="border border-stone-200 p-3 text-right font-bold text-red-600 print:border-black">
-                                  ({Math.round(currentArusKas.paymentsRapat).toLocaleString('id-ID')})
+                                  <div className="flex items-center justify-end">
+                                    <span className="tabular-nums">({formatArusKasValue(currentArusKas.paymentsRapat).toLocaleString('id-ID')})</span>
+                                    <div className="w-8 flex justify-center no-print">
+                                      <button 
+                                        onClick={() => setArusKasDetail({
+                                          title: 'Pengeluaran Rapat',
+                                          transactions: getArusKasTransactions('paymentsRapat', arusKasSubTab === 'bulanan')
+                                        })}
+                                        className="p-1 hover:bg-stone-100 rounded transition-colors cursor-pointer"
+                                        title="See Detail"
+                                      >
+                                        <Search className="w-3.5 h-3.5 text-stone-400 hover:text-[#D36125]" />
+                                      </button>
+                                    </div>
+                                  </div>
                                 </td>
                               </tr>
                               <tr>
                                 <td className="border border-stone-200 p-3 pl-8 text-stone-600 print:border-black">Pengeluaran Lain-lain</td>
                                 <td className="border border-stone-200 p-3 text-right font-bold text-red-600 print:border-black">
-                                  ({Math.round(currentArusKas.paymentsLain).toLocaleString('id-ID')})
+                                  <div className="flex items-center justify-end">
+                                    <span className="tabular-nums">({formatArusKasValue(currentArusKas.paymentsLain).toLocaleString('id-ID')})</span>
+                                    <div className="w-8 flex justify-center no-print">
+                                      <button 
+                                        onClick={() => setArusKasDetail({
+                                          title: 'Pengeluaran Lain-lain',
+                                          transactions: getArusKasTransactions('paymentsLain', arusKasSubTab === 'bulanan')
+                                        })}
+                                        className="p-1 hover:bg-stone-100 rounded transition-colors cursor-pointer"
+                                        title="See Detail"
+                                      >
+                                        <Search className="w-3.5 h-3.5 text-stone-400 hover:text-[#D36125]" />
+                                      </button>
+                                    </div>
+                                  </div>
                                 </td>
                               </tr>
                               <tr className="bg-stone-50 font-black">
@@ -1735,7 +1976,10 @@ export default function App() {
                                   "border border-stone-200 p-3 text-right print:border-black",
                                   currentArusKas.netOperating >= 0 ? "text-emerald-600" : "text-red-600"
                                 )}>
-                                  Rp {Math.round(currentArusKas.netOperating).toLocaleString('id-ID')}
+                                  <div className="flex items-center justify-end">
+                                    <span className="tabular-nums">Rp {formatArusKasValue(currentArusKas.netOperating).toLocaleString('id-ID')}</span>
+                                    <div className="w-8 no-print"></div>
+                                  </div>
                                 </td>
                               </tr>
 
@@ -1746,53 +1990,62 @@ export default function App() {
                               <tr>
                                 <td className="border border-stone-200 p-3 pl-8 text-stone-600 print:border-black">Penerimaan Bunga (Bank & Deposito)</td>
                                 <td className="border border-stone-200 p-3 text-right font-bold text-emerald-600 print:border-black">
-                                  Rp {Math.round(currentArusKas.interestIncome).toLocaleString('id-ID')}
+                                  <div className="flex items-center justify-end">
+                                    <span className="tabular-nums">Rp {formatArusKasValue(currentArusKas.interestIncome).toLocaleString('id-ID')}</span>
+                                    <div className="w-8 flex justify-center no-print">
+                                      <button 
+                                        onClick={() => setArusKasDetail({
+                                          title: 'Penerimaan Bunga (Bank & Deposito)',
+                                          transactions: getArusKasTransactions('interestIncome', arusKasSubTab === 'bulanan')
+                                        })}
+                                        className="p-1 hover:bg-stone-100 rounded transition-colors cursor-pointer"
+                                        title="See Detail"
+                                      >
+                                        <Search className="w-3.5 h-3.5 text-stone-400 hover:text-[#D36125]" />
+                                      </button>
+                                    </div>
+                                  </div>
                                 </td>
                               </tr>
-                              {currentArusKas.inflowFromDeposito > 0 && (
-                                <tr>
-                                  <td className="border border-stone-200 p-3 pl-8 text-stone-600 print:border-black">Pencairan Deposito (Cash In)</td>
-                                  <td className="border border-stone-200 p-3 text-right font-bold text-emerald-600 print:border-black">
-                                    Rp {Math.round(currentArusKas.inflowFromDeposito).toLocaleString('id-ID')}
-                                  </td>
-                                </tr>
-                              )}
-                              {currentArusKas.outflowToDeposito > 0 && (
-                                <tr>
-                                  <td className="border border-stone-200 p-3 pl-8 text-stone-600 print:border-black">Penempatan Deposito (Cash Out)</td>
-                                  <td className="border border-stone-200 p-3 text-right font-bold text-red-600 print:border-black">
-                                    (Rp {Math.round(currentArusKas.outflowToDeposito).toLocaleString('id-ID')})
-                                  </td>
-                                </tr>
-                              )}
                               <tr className="bg-stone-50 font-black">
                                 <td className="border border-stone-200 p-3 uppercase tracking-tight text-[#133838] print:border-black">Arus Kas Neto dari Aktivitas Investasi</td>
                                 <td className={cn(
                                   "border border-stone-200 p-3 text-right print:border-black",
                                   currentArusKas.netInvesting >= 0 ? "text-emerald-600" : "text-red-600"
                                 )}>
-                                  Rp {Math.round(currentArusKas.netInvesting).toLocaleString('id-ID')}
+                                  <div className="flex items-center justify-end">
+                                    <span className="tabular-nums">Rp {formatArusKasValue(currentArusKas.netInvesting).toLocaleString('id-ID')}</span>
+                                    <div className="w-8 no-print"></div>
+                                  </div>
                                 </td>
                               </tr>
-
                               {/* Summary Section */}
                               <tr className="h-4"></tr>
                               <tr className="bg-[#133838] text-white font-black print:bg-black print:text-white">
                                 <td className="border border-[#133838] p-3 uppercase tracking-widest print:border-black">Kenaikan/Penurunan Bersih Kas</td>
                                 <td className="border border-[#133838] p-3 text-right print:border-black">
-                                  Rp {Math.round(currentArusKas.netIncrease).toLocaleString('id-ID')}
+                                  <div className="flex items-center justify-end">
+                                    <span className="tabular-nums">Rp {formatArusKasValue(currentArusKas.netIncrease).toLocaleString('id-ID')}</span>
+                                    <div className="w-8 no-print"></div>
+                                  </div>
                                 </td>
                               </tr>
                               <tr className="bg-stone-100 font-black">
                                 <td className="border border-stone-200 p-3 uppercase tracking-widest text-stone-500 print:border-black">Kas pada Awal Periode</td>
                                 <td className="border border-stone-200 p-3 text-right text-stone-700 print:border-black">
-                                  Rp {Math.round(currentArusKas.saldoAwal).toLocaleString('id-ID')}
+                                  <div className="flex items-center justify-end">
+                                    <span className="tabular-nums">Rp {formatArusKasValue(currentArusKas.saldoAwal).toLocaleString('id-ID')}</span>
+                                    <div className="w-8 no-print"></div>
+                                  </div>
                                 </td>
                               </tr>
                               <tr className="bg-[#D36125] text-white font-black print:bg-stone-800 print:text-white">
                                 <td className="border border-[#D36125] p-3 uppercase tracking-widest print:border-black">Kas pada Akhir Periode</td>
                                 <td className="border border-[#D36125] p-3 text-right print:border-black">
-                                  Rp {Math.round(currentArusKas.saldoAkhir).toLocaleString('id-ID')}
+                                  <div className="flex items-center justify-end">
+                                    <span className="tabular-nums">Rp {formatArusKasValue(currentArusKas.saldoAkhir).toLocaleString('id-ID')}</span>
+                                    <div className="w-8 no-print"></div>
+                                  </div>
                                 </td>
                               </tr>
                             </tbody>
@@ -2090,11 +2343,22 @@ export default function App() {
                                 </td>
                               </tr>
                             )}
-                            <tr className="hover:bg-stone-50/50 transition-colors group">
-                              <td className="p-4 font-bold text-stone-500 whitespace-nowrap sticky left-0 bg-white z-10 group-hover:bg-stone-50 transition-colors w-[100px] min-w-[100px]">
+                            <tr 
+                              data-highlighted={isHighlighted(t) ? "true" : "false"}
+                              className={cn(
+                                "transition-all duration-500 group",
+                                isHighlighted(t) ? "bg-orange-50 ring-2 ring-inset ring-orange-200" : "hover:bg-stone-50/50"
+                              )}>
+                              <td className={cn(
+                                "p-4 font-bold text-stone-500 whitespace-nowrap sticky left-0 z-10 transition-colors w-[100px] min-w-[100px]",
+                                isHighlighted(t) ? "bg-orange-50" : "bg-white group-hover:bg-stone-50"
+                              )}>
                                 {new Date(t.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
                               </td>
-                              <td className="p-4 sticky left-[100px] bg-white z-10 group-hover:bg-stone-50 transition-colors w-[300px] min-w-[300px]">
+                              <td className={cn(
+                                "p-4 sticky left-[100px] z-10 transition-colors w-[300px] min-w-[300px]",
+                                isHighlighted(t) ? "bg-orange-50" : "bg-white group-hover:bg-stone-50"
+                              )}>
                                 <p className="font-bold text-[#133838] uppercase tracking-tight leading-tight">{t.description}</p>
                               </td>
                               <td className="p-4">
@@ -2180,11 +2444,23 @@ export default function App() {
                     <tbody className="divide-y divide-stone-100">
                       {kasTransactionsForTable.map((t, i) => {
                         return (
-                          <tr key={i} className="hover:bg-stone-50/50 transition-colors group">
-                            <td className="p-4 font-bold text-stone-500 whitespace-nowrap sticky left-0 bg-white z-10 group-hover:bg-stone-50 transition-colors w-[100px] min-w-[100px]">
+                          <tr 
+                            key={i} 
+                            data-highlighted={isHighlighted(t) ? "true" : "false"}
+                            className={cn(
+                              "transition-all duration-500 group",
+                              isHighlighted(t) ? "bg-orange-50 ring-2 ring-inset ring-orange-200" : "hover:bg-stone-50/50"
+                            )}>
+                            <td className={cn(
+                              "p-4 font-bold text-stone-500 whitespace-nowrap sticky left-0 z-10 transition-colors w-[100px] min-w-[100px]",
+                              isHighlighted(t) ? "bg-orange-50" : "bg-white group-hover:bg-stone-50"
+                            )}>
                               {new Date(t.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
                             </td>
-                            <td className="p-4 sticky left-[100px] bg-white z-10 group-hover:bg-stone-50 transition-colors w-[300px] min-w-[300px]">
+                            <td className={cn(
+                              "p-4 sticky left-[100px] z-10 transition-colors w-[300px] min-w-[300px]",
+                              isHighlighted(t) ? "bg-orange-50" : "bg-white group-hover:bg-stone-50"
+                            )}>
                               <p className="font-bold text-[#133838] uppercase tracking-tight leading-tight">{t.description}</p>
                             </td>
                             <td className="p-4">
@@ -2269,11 +2545,23 @@ export default function App() {
                     <tbody className="divide-y divide-stone-100">
                       {depositoTransactionsForTable.map((t, i) => {
                         return (
-                          <tr key={i} className="hover:bg-stone-50/50 transition-colors group">
-                            <td className="p-4 font-bold text-stone-500 whitespace-nowrap sticky left-0 bg-white z-10 group-hover:bg-stone-50 transition-colors w-[100px] min-w-[100px]">
+                          <tr 
+                            key={i} 
+                            data-highlighted={isHighlighted(t) ? "true" : "false"}
+                            className={cn(
+                              "transition-all duration-500 group",
+                              isHighlighted(t) ? "bg-orange-50 ring-2 ring-inset ring-orange-200" : "hover:bg-stone-50/50"
+                            )}>
+                            <td className={cn(
+                              "p-4 font-bold text-stone-500 whitespace-nowrap sticky left-0 z-10 transition-colors w-[100px] min-w-[100px]",
+                              isHighlighted(t) ? "bg-orange-50" : "bg-white group-hover:bg-stone-50"
+                            )}>
                               {new Date(t.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
                             </td>
-                            <td className="p-4 sticky left-[100px] bg-white z-10 group-hover:bg-stone-50 transition-colors w-[300px] min-w-[300px]">
+                            <td className={cn(
+                              "p-4 sticky left-[100px] z-10 transition-colors w-[300px] min-w-[300px]",
+                              isHighlighted(t) ? "bg-orange-50" : "bg-white group-hover:bg-stone-50"
+                            )}>
                               <p className="font-bold text-[#133838] uppercase tracking-tight leading-tight">{t.description}</p>
                             </td>
                             <td className="p-4">
@@ -2341,6 +2629,113 @@ export default function App() {
           <ChevronUp className="w-4 h-4" />
         </button>
       )}
+
+      {/* Arus Kas Detail Modal */}
+      <AnimatePresence>
+        {arusKasDetail && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 no-print">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setArusKasDetail(null)}
+              className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-4xl bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              <div className="p-6 border-b border-stone-100 flex items-center justify-between bg-stone-50/50">
+                <div>
+                  <h3 className="text-lg font-black text-[#133838] uppercase tracking-tight">Detail: {arusKasDetail.title}</h3>
+                  <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mt-0.5">
+                    {arusKasSubTab === 'bulanan' ? `${monthNames[selectedArusKasMonth]} ${selectedYear}` : `Tahun ${selectedYear}`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => setArusKasDetail(null)}
+                    className="p-2 hover:bg-stone-200 rounded-full transition-colors text-stone-400 hover:text-stone-600"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-auto p-6">
+                <table className="w-full text-xs border-separate border-spacing-0">
+                  <thead>
+                    <tr className="bg-stone-50">
+                      <th className="border-b border-stone-200 p-3 text-left font-black uppercase tracking-wider text-stone-500">Tanggal</th>
+                      <th className="border-b border-stone-200 p-3 text-left font-black uppercase tracking-wider text-stone-500">Keterangan</th>
+                      <th className="border-b border-stone-200 p-3 text-left font-black uppercase tracking-wider text-stone-500">Kategori</th>
+                      <th className="border-b border-stone-200 p-3 text-right font-black uppercase tracking-wider text-stone-500">Jumlah</th>
+                      <th className="border-b border-stone-200 p-3 text-center font-black uppercase tracking-wider text-stone-500">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {arusKasDetail.transactions.length > 0 ? (
+                      arusKasDetail.transactions.map((t, i) => (
+                        <tr key={i} className="hover:bg-stone-50/50 transition-colors">
+                          <td className="p-3 font-bold text-stone-500 whitespace-nowrap">
+                            {new Date(t.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </td>
+                          <td className="p-3">
+                            <p className="font-bold text-[#133838] uppercase tracking-tight">{t.description}</p>
+                            <p className="text-[9px] text-stone-400 font-medium uppercase tracking-wider">{t.bank}</p>
+                          </td>
+                          <td className="p-3">
+                            <span className="px-2 py-0.5 bg-stone-100 text-stone-500 rounded font-bold text-[9px] uppercase tracking-widest">
+                              {t.category}
+                            </span>
+                          </td>
+                          <td className={cn("p-3 text-right font-black", t.type === 'Income' ? "text-emerald-600" : "text-red-600")}>
+                            <span className="tabular-nums">
+                              {t.type === 'Expense' ? '(' : ''}
+                              Rp {formatArusKasValue(t.amount).toLocaleString('id-ID')}
+                              {t.type === 'Expense' ? ')' : ''}
+                            </span>
+                          </td>
+                          <td className="p-3 text-center">
+                            <button 
+                              onClick={() => handleNavigateToTransaksi(t)}
+                              className="p-1.5 hover:bg-[#D36125]/10 text-stone-400 hover:text-[#D36125] rounded-lg transition-all"
+                              title="Lihat di Menu Transaksi"
+                            >
+                              <ArrowRight className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={5} className="p-12 text-center text-stone-400 font-bold uppercase tracking-widest opacity-50">
+                          Tidak ada data transaksi
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                  {arusKasDetail.transactions.length > 0 && (
+                    <tfoot>
+                      <tr className="bg-stone-50/50 font-black">
+                        <td colSpan={3} className="p-4 text-right uppercase tracking-widest text-stone-500">Total</td>
+                        <td className="p-4 text-right text-[#133838]">
+                          <span className="tabular-nums">
+                            Rp {formatArusKasValue(arusKasDetail.transactions.reduce((acc, t) => acc + (t.type === 'Income' ? t.amount : -t.amount), 0)).toLocaleString('id-ID')}
+                          </span>
+                        </td>
+                        <td className="p-4"></td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
